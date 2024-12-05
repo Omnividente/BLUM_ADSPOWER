@@ -443,7 +443,7 @@ class TelegramBotAutomation:
             if max_games == 0:
                 logger.info(f"Account {self.serial_number}: MAX_GAMES is set to 0. Skipping game start.")
                 return  # Пропускаем запуск игры
-            elif max_games is not None:
+            elif max_games is not None and max_games != float('inf'):
                 logger.info(f"Account {self.serial_number}: {available_games} games available.")
                 logger.info(f"Account {self.serial_number}: Limiting to {max_games} games in settings.")
             else:

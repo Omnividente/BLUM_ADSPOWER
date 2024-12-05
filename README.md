@@ -1,4 +1,4 @@
-Данный бот является клоном репозиатория [Marcelkoo](https://github.com/Marcelkoo/blum-adspower-clicker), который оптимизирован мной для личных нужд.
+Данный бот является форком репозиатория [Marcelkoo](https://github.com/Marcelkoo/blum-adspower-clicker).
 
 # Автоматизация Телеграм Бота для BLUM
 

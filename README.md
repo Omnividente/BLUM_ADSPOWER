@@ -1,4 +1,4 @@
-Данный бот является клоном репозиатория [Marcelkoo](https://github.com/Marcelkoo/blum-adspower-clicker), который оптимизирован мной для личных нужд. Все ссылки остались от автора. 
+Данный бот является клоном репозиатория [Marcelkoo](https://github.com/Marcelkoo/blum-adspower-clicker), который оптимизирован мной для личных нужд.
 
 # Автоматизация Телеграм Бота для BLUM
 
@@ -11,6 +11,7 @@
 - [Обязательное расширение](#обязательное-расширение)
 - [Что нужно для работы](#что-нужно-для-работы)
 - [Установка](#установка)
+- [Настройка](#настройка)
 - [Использование](#использование)
 - [Поддержка](#поддержка)
 
@@ -28,8 +29,8 @@
 - Вход в веб-версию Телеграма в Adspower ([https://web.telegram.org/](https://web.telegram.org/)).
 - **Важно:** Первый вход в BLUM по реферальной ссылке должен быть выполнен вручную. Также можно прокликать бонусы (подписка на канал, YouTube и т.д.), так как бот эти действия не выполняет.
 --------
-- Моя многоразовая реферальная ссылка для BLUM: [https://t.me/BlumCryptoBot/app?startapp=ref_Ibgg6ICPd7](https://t.me/BlumCryptoBot/app?startapp=ref_Ibgg6ICPd7)
-- Моя реферальная ссылка для Adspower: [https://share.adspower.net/marcel](https://share.adspower.net/marcel) и купон код Marcel для -5% скидки
+- Моя  реферальная ссылка для BLUM: [https://t.me/blum/app?startapp=ref_vNDGLmgnYL](https://t.me/blum/app?startapp=ref_vNDGLmgnYL)
+- Моя реферальная ссылка для Adspower: [https://share.adspower.net/omnividente](https://share.adspower.net/omnividente) и купон код omnividente для -5% скидки
 
 ## Установка
 
@@ -41,6 +42,17 @@
     ```
     pip install -r requirements.txt
     ```
+## Настройка
+    TELEGRAM_GROUP_URL=
+    BOT_LINK=
+    MAX_GAMES=
+(Settings.txt)
+
+TELEGRAM_GROUP_URL= Ссылка на ваш канал или чат, где бот будет искать вашу реферальную ссылку для запуска
+
+BOT_LINK= Реферальная ссылка
+
+MAX_GAMES= Максимальное количество игр за один проход
 
 ## Использование
 
@@ -52,4 +64,4 @@
 
 ## Поддержка
 
-По всем вопросам и ошибкам пишите [сюда](https://t.me/Marcelkow).
+По всем вопросам и ошибкам пишите [сюда](https://t.me/cryptoprojectssbt).

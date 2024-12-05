@@ -4,7 +4,8 @@
 
 Этот скрипт автоматически запускает браузеры через Adspower и раз в 8 часов проходит по всем аккаунтам BLUM, проверяет баланс и нажимает на кнопку для старта нового фарма.
 
-![image](https://github.com/Marcelkoo/blum-adspower-clicker/assets/107651246/89f3a2b0-8bc6-4108-b237-20ca09ba4066)
+![image](https://github.com/user-attachments/assets/1a2ad0cb-3cae-4344-b559-ec105d9d16f8)
+
 
 ## Содержание
 

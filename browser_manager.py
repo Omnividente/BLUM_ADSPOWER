@@ -6,7 +6,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import WebDriverException
 import traceback
-from utils import setup_logger
+from utils import setup_logger, visible
 from colorama import Fore, Style
 
 # Настройка логирования
@@ -19,6 +19,7 @@ class BrowserManager:
     def __init__(self, serial_number):
         self.serial_number = serial_number
         self.driver = None
+        self.headless_mode = 0 if visible.is_set() else 1
 
     def check_browser_status(self):
         """
@@ -123,7 +124,7 @@ class BrowserManager:
                 # Формирование URL для запуска браузера
                 request_url = (
                     f'http://local.adspower.net:50325/api/v1/browser/start?'
-                    f'serial_number={self.serial_number}&ip_tab=0&headless=1'
+                    f'serial_number={self.serial_number}&ip_tab=0&headless={self.headless_mode}'
                 )
                 logger.debug(
                     f"#{self.serial_number}: Request URL for starting browser: {request_url}")

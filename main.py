@@ -2,7 +2,7 @@ import random
 import time
 from telegram_bot_automation import TelegramBotAutomation
 from update_manager import check_and_update, restart_script
-from utils import read_accounts_from_file, reset_balances, setup_logger, load_settings, is_debug_enabled, GlobalFlags, stop_event, get_color
+from utils import read_accounts_from_file, reset_balances, setup_logger, load_settings, is_debug_enabled, GlobalFlags, stop_event, get_color, visible
 from colorama import Fore, Style
 from prettytable import PrettyTable
 from datetime import datetime, timedelta
@@ -799,7 +799,17 @@ if __name__ == "__main__":
                         help="Enable debug logging")
     parser.add_argument("--account", type=int,
                         help="Force processing a specific account")
+    parser.add_argument(
+        "--visible", type=int, choices=[0, 1], default=0, help="Set visible mode (1 for visible, 0 for headless)"
+    )
     args = parser.parse_args()
+    # Установка флага visible
+    if args.visible == 1:
+        visible.set()
+        logger.info("Visible mode enabled.")
+    else:
+        visible.clear()
+        logger.info("Headless mode enabled.")
 
     # Настройка логирования
     logger = setup_logger(debug_mode=args.debug, log_to_file=args.debug)

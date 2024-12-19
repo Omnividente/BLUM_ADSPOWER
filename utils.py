@@ -12,6 +12,7 @@ init(autoreset=True)
 
 # Глобальный stop_event для управления остановкой
 stop_event = threading.Event()
+visible = threading.Event()
 stop_event.restart_mode = False
 
 # Глобальная переменная для логгера

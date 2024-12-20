@@ -44,7 +44,7 @@
     pip install -r requirements.txt
     ```
 ## Настройка
-    ```
+    
     TELEGRAM_GROUP_URL=https://t.me/CryptoProjects_sbt
     BOT_LINK=https://t.me/blum/app?startapp=ref_vNDGLmgnYL
     MAX_GAMES=
@@ -60,7 +60,7 @@
 
     # Список файлов для проверки обновлений (через запятую)
     FILES_TO_UPDATE=remote_files_for_update
-    ```
+    
 (Settings.txt)
 
 **TELEGRAM_GROUP_URL=** (_Ссылка на ваш канал или чат, где бот будет искать вашу реферальную ссылку для запуска_)  

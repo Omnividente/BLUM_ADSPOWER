@@ -3,7 +3,6 @@
 
 This bot is a fork of the repository [Marcelkoo](https://github.com/Marcelkoo/blum-adspower-clicker).
 
-The script automatically launches browsers via AdsPower, plays games, checks in, and collects bonuses.
 
 ![Example of bot usage](https://github.com/user-attachments/assets/47cb404e-f8f9-4833-bb70-f7d640c160d7)
 
@@ -18,7 +17,6 @@ The script automatically launches browsers via AdsPower, plays games, checks in,
 ## Features
 - Automatic browser launches via AdsPower.
 - Game actions: check-ins, game launches, and bonus collection.
-- Supports multiple accounts and flexible data sources (settings.txt, accounts.txt, API).
 - Script updates and automatic update handling.
 
 ## Required Extension

@@ -151,7 +151,7 @@ class FileUpdater:
 
         # Логируем список обновлений в конце
         if updates:
-            logger.info(f"Updates found for the following files: {updates}")
+            logger.debug(f"Updates found for the following files: {updates}")
         else:
             logger.debug("No updates found.")
 
@@ -267,9 +267,9 @@ def check_and_update(priority_task_queue, is_task_active):
                         stop_event.restart_mode = True
                 else:
                     logger.info(
-                        "Automatic updates are disabled. Updates available:")
+                        "Automatic updates are disabled. Updates available:", extra={'color': Fore.CYAN})
                     for file in update_files:
-                        logger.info(f" - {file}")
+                        logger.info(f"   {file}", extra={'color': Fore.CYAN})
             else:
                 logger.debug("No updates found.")
 

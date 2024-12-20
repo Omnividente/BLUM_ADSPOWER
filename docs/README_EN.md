@@ -54,6 +54,22 @@ The script automatically launches browsers via AdsPower, plays games, checks in,
 | **AUTO_UPDATE**         | (true/false) Enable or disable automatic updates.                                                                      | `true`                                          |
 | **FILES_TO_UPDATE**     | List of files to check for updates. Defaults to `remote_files_for_update` in the repository.                           | `main.py, utils.py`                             |
 
+## Working with Accounts
+
+The script processes accounts from three sources in the following order of priority:
+
+1. **`accounts` parameter in the `settings.txt` file:**
+   - Format: a list of accounts separated by commas, with support for ranges.
+   - Example: `accounts=1, 2, 5-7, 10`.
+
+2. **`accounts.txt` file:**
+   - One account per line.
+   - Used if the `accounts` parameter in the `settings.txt` is missing or empty.
+
+3. **Profiles from the local AdsPower API:**
+   - Used if both of the above sources are missing or empty.
+   - Processes all available profiles.
+
 ---
 
 ## Usage
@@ -80,19 +96,3 @@ options:
 ## Support
 
 For any questions or issues, contact [here](https://t.me/cryptoprojectssbt).
-
-## Working with Accounts
-
-The script processes accounts from three sources in the following order of priority:
-
-1. **`accounts` parameter in the `settings.txt` file:**
-   - Format: a list of accounts separated by commas, with support for ranges.
-   - Example: `accounts=1, 2, 5-7, 10`.
-
-2. **`accounts.txt` file:**
-   - One account per line.
-   - Used if the `accounts` parameter is missing or empty.
-
-3. **Profiles from the local AdsPower API:**
-   - Used if both of the above sources are missing or empty.
-   - Processes all available profiles.

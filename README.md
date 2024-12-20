@@ -1,6 +1,7 @@
-# Документация
+# Документация / Documentation
 
-Добро пожаловать! Выберите язык документации:
+Добро пожаловать! Выберите язык документации:  
+Welcome! Please select the documentation language:
 
-- [Русский (Russian)](README_RU.md)
-- [English](README_EN.md)
+- [Русский (Russian)](docs/README_RU.md)
+- [English](docs/README_EN.md)

@@ -213,7 +213,7 @@ def process_account(account, balance_dict, active_timers):
                             # Инициализация объекта TelegramBotAutomation
                             bot = TelegramBotAutomation(account, settings)
 
-                            navigate_and_perform_actions(bot)
+                            navigate_and_perform_actions(bot, account)
 
                             # Получение данных аккаунта
                             username = bot.get_username()
@@ -301,7 +301,7 @@ def process_account(account, balance_dict, active_timers):
 # Навигация и выполнение действий с ботом
 
 
-def navigate_and_perform_actions(bot):
+def navigate_and_perform_actions(bot, account):
     """
     Навигация и выполнение всех задач с ботом.
     """

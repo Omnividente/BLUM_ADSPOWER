@@ -168,8 +168,7 @@ class FileUpdater:
         Returns True if all files were successfully updated, otherwise False.
         """
         logger = logging.getLogger("application_logger")
-        logger.info("Updating files directly via raw URLs...", extra={
-            'color': Fore.CYAN})
+        logger.info("Updating files directly via raw URLs...")
 
         # Удаляем расширение .git из URL, если оно присутствует
         if repo_url.endswith(".git"):
@@ -204,9 +203,10 @@ class FileUpdater:
 
                 content = response.content  # Получаем содержимое файла
 
-                # Путь для резервной копии
+                # Путь для резервной копии и обновлённого файла
                 file_name = os.path.basename(file_path)  # Извлекаем имя файла
                 backup_path = os.path.join(temp_dir, f"{file_name}.backup")
+                updated_path = os.path.join(temp_dir, file_name)
 
                 # Удаляем старую резервную копию, если она существует
                 if os.path.exists(backup_path):
@@ -215,14 +215,13 @@ class FileUpdater:
                 # Создаём резервную копию текущего файла
                 if os.path.exists(file_path):
                     os.rename(file_path, backup_path)
-                    logger.info(f"Backup created: {backup_path}", extra={
-                        'color': Fore.CYAN})
+                    logger.info(f"Backup created: {backup_path}")
 
-                # Сохраняем обновленный файл обратно в его изначальный путь
-                with open(file_path, "wb") as f:
+                # Сохраняем обновлённый файл в temp
+                with open(updated_path, "wb") as f:
                     f.write(content)
 
-                logger.info(f"File {file_name} successfully updated at {file_path}.", extra={
+                logger.info(f"File {file_name} successfully updated and saved in the temp folder.", extra={
                             'color': Fore.CYAN})
 
             except Exception as e:
@@ -232,7 +231,6 @@ class FileUpdater:
                     raise  # Немедленное прерывание, если флаг установлен
 
         return success
-
 
 
 # ========================= Основная логика ==========================
@@ -263,6 +261,21 @@ def restart_script():
             logger.info("Exiting current process.")
         sys.exit(0)
 
+def ignore_files_in_git(file_paths):
+    """
+    Отключает отслеживание изменений для нескольких файлов в Git (локально).
+    :param file_paths: Список путей к файлам, которые нужно игнорировать.
+    """
+    for file_path in file_paths:
+        try:
+            subprocess.run(
+                ["git", "update-index", "--assume-unchanged", file_path],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
 
 def check_and_update(priority_task_queue, is_task_active):
     """

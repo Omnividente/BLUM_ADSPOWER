@@ -1,13 +1,14 @@
 import random
 import time
 from telegram_bot_automation import TelegramBotAutomation
-from update_manager import check_and_update, restart_script
+from update_manager import check_and_update, restart_script, ignore_files_in_git
 from utils import get_accounts, reset_balances, setup_logger, load_settings, is_debug_enabled, GlobalFlags, stop_event, get_color, visible
 from colorama import Fore, Style
 from prettytable import PrettyTable
 from datetime import datetime, timedelta
 from threading import Timer, Lock, Thread
 from queue import Queue, Empty
+from quest_executor import QuestExecutor
 import json
 import os
 import argparse
@@ -16,6 +17,7 @@ import signal
 import logging
 import shutil
 import glob
+
 
 ###################################################################################################################
 ###################################################################################################################
@@ -68,6 +70,7 @@ else:
     logger.debug(f"Timers file already exists: {TIMERS_FILE}")
 
 
+    
 def schedule_periodic_update_check(task_queue: Queue, interval: int = DEFAULT_UPDATE_INTERVAL):
     """
     Планирует периодическую проверку обновлений, добавляя задачу в очередь с учётом stop_event.
@@ -222,7 +225,7 @@ def process_account(account, balance_dict, active_timers):
                             if balance <= 0:  # Проверка баланса
                                 raise Exception(
                                     f"#{account}: Invalid balance")
-
+                            
                             next_schedule = calculate_next_schedule(
                                 bot.get_time())
 
@@ -344,6 +347,14 @@ def navigate_and_perform_actions(bot):
 
     logger.debug("Starting farming...")
     bot.farming()
+    
+    if enable_quests:        
+        logger.info(f"#{account}: Launching quests...")
+        quest = QuestExecutor(bot.driver, account)
+        quest.execute_all_tasks()
+        logger.info(f"#{account}: The quests are completed.")
+    
+        
 
 
 # Парсинг баланса
@@ -858,7 +869,15 @@ if __name__ == "__main__":
 
     # Настройка логирования
     logger = setup_logger(debug_mode=args.debug, log_dir="./log")
-
+    enable_quests = settings.get("ENABLE_QUESTS", "false").strip().lower() == "true"
+    
+    if enable_quests:
+        logger.info(f"Quests are enabled.")
+    else:
+        logger.info(f"Quests are disabled.")
+    # Отключение отслеживания в github 
+    files_to_ignore = ["settings.txt", "accounts.txt"]
+    ignore_files_in_git(files_to_ignore)
     # Принудительный запуск аккаунта
     if args.account:
         account = args.account
@@ -874,6 +893,8 @@ if __name__ == "__main__":
             sys.exit(0)  # Завершаем выполнение после обработки аккаунта
 
     # Загрузка настроек и таймеров
+         
+    
     timers_data = load_timers()
     update_interval = int(settings.get(
         "UPDATE_INTERVAL", DEFAULT_UPDATE_INTERVAL))

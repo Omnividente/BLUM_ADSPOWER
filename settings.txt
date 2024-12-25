@@ -2,6 +2,7 @@ TELEGRAM_GROUP_URL=https://t.me/CryptoProjects_sbt
 BOT_LINK=https://t.me/blum/app?startapp=ref_vNDGLmgnYL
 MAX_GAMES=
 ACCOUNTS=
+ENABLE_QUESTS=true
 
 # URL репозитория для проверки обновлений
 REPOSITORY_URL=https://github.com/Omnividente/blum_adspower
@@ -10,7 +11,7 @@ REPOSITORY_URL=https://github.com/Omnividente/blum_adspower
 UPDATE_INTERVAL=10800
 
 # Включение/выключение автоматических обновлений
-AUTO_UPDATE=true
+AUTO_UPDATE=false
 
 # Список файлов для проверки обновлений (через запятую)
 FILES_TO_UPDATE=remote_files_for_update

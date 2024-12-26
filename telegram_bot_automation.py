@@ -1154,9 +1154,9 @@ class TelegramBotAutomation:
                 requestWakeLock();
 
                 window.SETTINGS = window.GAME_SETTINGS || {
-                    bombProbability: 0.99,  
+                    bombProbability: 0.01,  
                     flowerProbability: 0.99,  
-                    iceProbability: 0.99,
+                    iceProbability: 0.80,
                     dogsProbability: 0.99,
                     TrumpProbability: 0.99,
                     HarrisProbability: 0.99,    

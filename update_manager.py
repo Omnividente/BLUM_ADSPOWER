@@ -81,7 +81,7 @@ class GitUpdater:
 class FileUpdater:
     """
     Класс для обновления файлов напрямую через raw URL.
-    """ 
+    """
 
     @staticmethod
     def check_updates():
@@ -172,7 +172,7 @@ class FileUpdater:
         """
         Updates files via URL and creates backups in the temp folder.
         Returns True if all files were successfully updated, otherwise False.
-        """       
+        """
         logger.info("Updating files directly via raw URLs...", extra={
             'color': Fore.CYAN})
 
@@ -242,12 +242,13 @@ class FileUpdater:
 # ========================= Основная логика ==========================
 
 def calculate_hash(content):
-        """
-        Вычисляет SHA256 хэш содержимого.
-        """
-        sha256 = hashlib.sha256()
-        sha256.update(content)
-        return sha256.hexdigest()
+    """
+    Вычисляет SHA256 хэш содержимого.
+    """
+    sha256 = hashlib.sha256()
+    sha256.update(content)
+    return sha256.hexdigest()
+
 
 def restart_script():
     # signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -274,6 +275,7 @@ def restart_script():
             logger.info("Exiting current process.")
         sys.exit(0)
 
+
 def ignore_files_in_git(file_paths):
     """
     Отключает отслеживание изменений для нескольких файлов в Git (локально).
@@ -289,6 +291,7 @@ def ignore_files_in_git(file_paths):
             )
         except Exception:
             pass
+
 
 def check_and_update(priority_task_queue, is_task_active):
     """

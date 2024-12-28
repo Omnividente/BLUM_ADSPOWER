@@ -5,6 +5,7 @@ from utils import setup_logger, is_debug_enabled
 
 logger = setup_logger()  # Используем логгер
 
+
 class QuestExecutor:
     def __init__(self, driver, account):
         self.driver = driver
@@ -35,13 +36,14 @@ class QuestExecutor:
             raise
 
     def authorize(self):
-        logger.debug(f"{self.short_account_id}: Starting authorization process...")
+        logger.debug(
+            f"{self.short_account_id}: Starting authorization process...")
         init_params = self.driver.execute_script(
             "return sessionStorage.getItem('__telegram__initParams');"
         )
         if not init_params:
             raise Exception("InitParams not found in sessionStorage.")
-        
+
         init_data = json.loads(init_params)
         tg_web_app_data = init_data.get("tgWebAppData")
         if not tg_web_app_data:
@@ -49,12 +51,13 @@ class QuestExecutor:
 
         auth_url = "https://user-domain.blum.codes/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP"
         payload = {"query": tg_web_app_data}
-        response = self.make_request(auth_url, method="POST", headers={"Content-Type": "application/json"}, body=payload)
+        response = self.make_request(auth_url, method="POST", headers={
+                                     "Content-Type": "application/json"}, body=payload)
 
         self.token = response.get("token", {}).get("access")
         if not self.token:
             raise Exception("Authorization failed. Token not found.")
-        
+
         logger.debug(f"{self.short_account_id}: Authorization successful.")
 
     def fetch_tasks(self, force_update=False):
@@ -64,7 +67,7 @@ class QuestExecutor:
 
         tasks_url = "https://earn-domain.blum.codes/api/v1/tasks"
         headers = {"Authorization": f"Bearer {self.token}"}
-        tasks = self.make_request(tasks_url, headers=headers)        
+        tasks = self.make_request(tasks_url, headers=headers)
         self.cached_tasks = tasks
         self.last_task_fetch_time = current_time
         return tasks
@@ -73,7 +76,8 @@ class QuestExecutor:
         """
         Загружает ответы из внешнего JSON.
         """
-        logger.debug(f"{self.short_account_id}: Fetching answers from external JSON file...")
+        logger.debug(
+            f"{self.short_account_id}: Fetching answers from external JSON file...")
         answer_url = f"https://omnividente.github.io/QUIZ/answer.json?timestamp={int(time.time())}"
         headers = {"User-Agent": "Marin Kitagawa"}
 
@@ -82,9 +86,11 @@ class QuestExecutor:
             if not answers:
                 raise Exception("Failed to fetch answers. Response is empty.")
             self.cached_answers = answers
-            logger.debug(f"{self.short_account_id}: Answers successfully fetched and cached.")
+            logger.debug(
+                f"{self.short_account_id}: Answers successfully fetched and cached.")
         except Exception as e:
-            logger.error(f"{self.short_account_id}: Error while fetching answers: {e}")
+            logger.error(
+                f"{self.short_account_id}: Error while fetching answers: {e}")
             raise
 
     def extract_tasks(self, data):
@@ -124,9 +130,6 @@ class QuestExecutor:
 
         return result
 
-
-
-
     def wait_for_task_status(self, task_id, expected_status, timeout=60, interval=5):
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -138,7 +141,7 @@ class QuestExecutor:
 
     def get_task_status(self, task_id):
         tasks = self.fetch_tasks(force_update=True)
-        all_tasks = self.extract_tasks(tasks)        
+        all_tasks = self.extract_tasks(tasks)
         for task in all_tasks:
             if task.get("id") == task_id:
                 return task.get("status")
@@ -149,28 +152,36 @@ class QuestExecutor:
         task_id = task.get("id", "Unknown ID")
         status = task.get("status")
 
-        logger.debug(f"{self.short_account_id}: Processing task '{task_title}' (ID: {task_id}, Status: {status})")
+        logger.debug(
+            f"{self.short_account_id}: Processing task '{task_title}' (ID: {task_id}, Status: {status})")
 
         if status == "NOT_STARTED":
-            logger.info(f"{self.short_account_id}: Starting task '{task_title}'.")
+            logger.info(
+                f"{self.short_account_id}: Starting task '{task_title}'.")
             new_status = self.start_task(task)
-            logger.debug(f"{self.short_account_id}: Task '{task_title}' started, new status: {new_status}.")
+            logger.debug(
+                f"{self.short_account_id}: Task '{task_title}' started, new status: {new_status}.")
         elif status == "READY_FOR_VERIFY":
-            logger.info(f"{self.short_account_id}: Verifying task '{task_title}'.")
+            logger.info(
+                f"{self.short_account_id}: Verifying task '{task_title}'.")
             new_status = self.verify_task(task)
-            logger.debug(f"{self.short_account_id}: Task '{task_title}' verified, new status: {new_status}.")
+            logger.debug(
+                f"{self.short_account_id}: Task '{task_title}' verified, new status: {new_status}.")
         elif status == "READY_FOR_CLAIM":
-            logger.info(f"{self.short_account_id}: Claiming task '{task_title}'.")
+            logger.info(
+                f"{self.short_account_id}: Claiming task '{task_title}'.")
             new_status = self.claim_task(task)
-            logger.debug(f"{self.short_account_id}: Task '{task_title}' claimed, new status: {new_status}.")
+            logger.debug(
+                f"{self.short_account_id}: Task '{task_title}' claimed, new status: {new_status}.")
         else:
-            logger.debug(f"{self.short_account_id}: Task '{task_title}' has an unexpected status: {status}")
-
+            logger.debug(
+                f"{self.short_account_id}: Task '{task_title}' has an unexpected status: {status}")
 
     def start_task(self, task):
         task_id = task.get("id")
         start_url = f"https://earn-domain.blum.codes/api/v1/tasks/{task_id}/start"
-        response = self.make_request(start_url, method="POST", headers={"Authorization": f"Bearer {self.token}"})
+        response = self.make_request(start_url, method="POST", headers={
+                                     "Authorization": f"Bearer {self.token}"})
         return response.get("status")
 
     def verify_task(self, task):
@@ -179,10 +190,12 @@ class QuestExecutor:
         keyword = self.cached_answers.get(task_id)
 
         if not keyword:
-            logger.warning(f"{self.short_account_id}: No keyword found for task {task.get('title', 'Unnamed Task')}. Skipping verification.")
+            logger.warning(
+                f"{self.short_account_id}: No keyword found for task {task.get('title', 'Unnamed Task')}. Skipping verification.")
             return
 
-        logger.info(f"{self.short_account_id}: Verifying task '{task.get('title')}' with keyword: '{keyword}'")
+        logger.info(
+            f"{self.short_account_id}: Verifying task '{task.get('title')}' with keyword: '{keyword}'")
         response = self.make_request(verify_url, method="POST", headers={
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
@@ -193,10 +206,12 @@ class QuestExecutor:
         task_id = task.get("id")
         task_title = task.get("title", "Unnamed Task")
         claim_url = f"https://earn-domain.blum.codes/api/v1/tasks/{task_id}/claim"
-        response = self.make_request(claim_url, method="POST", headers={"Authorization": f"Bearer {self.token}"})
+        response = self.make_request(claim_url, method="POST", headers={
+                                     "Authorization": f"Bearer {self.token}"})
         status = response.get("status")
         if status == "FINISHED":
-            logger.info(f"{self.short_account_id}: Successfully claimed task '{task_title}'.")
+            logger.info(
+                f"{self.short_account_id}: Successfully claimed task '{task_title}'.")
         return status
 
     def process_tasks(self):
@@ -211,7 +226,8 @@ class QuestExecutor:
             self.process_ready_for_claim()  # Проверяем READY_FOR_CLAIM после VERIFY
 
     def process_ready_for_claim(self):
-        logger.debug(f"{self.short_account_id}: Checking for tasks READY_FOR_CLAIM...")
+        logger.debug(
+            f"{self.short_account_id}: Checking for tasks READY_FOR_CLAIM...")
         tasks = self.fetch_tasks()
         all_tasks = self.extract_tasks(tasks)
         for task in all_tasks:
@@ -219,7 +235,8 @@ class QuestExecutor:
                 self.claim_task(task)
 
     def process_ready_for_verify(self):
-        logger.debug(f"{self.short_account_id}: Checking for tasks READY_FOR_VERIFY...")
+        logger.debug(
+            f"{self.short_account_id}: Checking for tasks READY_FOR_VERIFY...")
         tasks = self.fetch_tasks()
         all_tasks = self.extract_tasks(tasks)
         any_verified = False

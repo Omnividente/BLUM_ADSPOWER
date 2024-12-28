@@ -73,7 +73,7 @@ class BrowserManager:
                 logger.debug(f"#{self.serial_number}: Browser is not active, no need to wait.")
                 return True
 
-            logger.debug(f"#{self.serial_number}: Browser is active. Waiting for closure.")
+            logger.info(f"#{self.serial_number}: Browser is active. Waiting for closure.")
             timeout = 900  # Тайм-аут на 15 минут
             start_time = time.time()
 

@@ -1,11 +1,13 @@
 import re
 import random
 import time
+import json
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, WebDriverException, TimeoutException, StaleElementReferenceException
 from utils import get_max_games, stop_event
+from urllib.parse import unquote, parse_qs
 from browser_manager import BrowserManager
 from colorama import Fore, Style
 import logging
@@ -49,96 +51,132 @@ class TelegramBotAutomation:
         logger.debug(
             f"#{self.serial_number}: Automation initialization completed successfully.")
 
+    def wait_for_page_load(self, timeout=30):
+        """
+        Ожидание полной загрузки страницы с помощью проверки document.readyState.
+
+        :param driver: WebDriver Selenium.
+        :param timeout: Максимальное время ожидания.
+        """
+        WebDriverWait(self.driver, timeout).until(
+            lambda d: d.execute_script(
+                "return document.readyState") == "complete"
+        )
+
     def claim_daily_reward(self):
         """
         Проверяет наличие кнопки для ежедневного вознаграждения "Собрать".
         Если кнопка доступна, нажимает её и проверяет появление времени до следующего нажатия.
         """
+        if stop_event.is_set():
+            logger.debug(
+                f"#{self.serial_number}: Stop event detected. Exiting claim_daily_reward.")
+            return
+
+        self.wait_for_page_load()
+
         try:
             logger.debug(
                 f"#{self.serial_number}: Checking for the daily reward button.")
 
-            # Ждём кнопку "Собрать"
-            reward_button = WebDriverWait(self.driver, 15).until(
+            # Ограничиваем поиск областью блока 'pages-index-daily-reward reward'
+            reward_container = WebDriverWait(self.driver, 30).until(
                 EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "button.kit-pill.reset"))
+                    (By.CSS_SELECTOR, "div.pages-index-daily-reward.reward"))
             )
-            logger.debug(
-                f"#{self.serial_number}: Daily reward button found. Checking button state.")
+            logger.debug(f"#{self.serial_number}: Found reward container.")
 
-            button_classes = reward_button.get_attribute("class")
-            logger.debug(
-                f"#{self.serial_number}: Button classes: {button_classes}")
+            retry_count = 0
+            max_retries = 3
 
-            # Определяем состояние кнопки
-            if "is-state-claimed" in button_classes:
-                logger.info(
-                    f"#{self.serial_number}: Daily check-in already claimed.")
-            elif "is-state-claim" in button_classes:
-                logger.debug(
-                    f"#{self.serial_number}: Daily check-in button is available. Attempting to click.")
-                reward_button.click()
-                logger.info(
-                    f"#{self.serial_number}: Daily check-in clicked successfully.")
-                script = """
-                    window.location.assign(window.location.origin + window.location.pathname);
-                """
-                self.driver.execute_script(script)
-            else:
-                logger.warning(
-                    f"#{self.serial_number}: Reward button state is unknown.")
+            while retry_count < max_retries:
+                if stop_event.is_set():
+                    logger.debug(
+                        f"#{self.serial_number}: Stop event detected during retries. Exiting.")
+                    return
+
+                try:
+                    # Ожидание кнопки "Собрать" внутри reward_container
+                    reward_button = WebDriverWait(reward_container, 10).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, "button.kit-pill-claim.reset"))
+                    )
+                    logger.debug(
+                        f"#{self.serial_number}: Daily reward button found. Checking button state.")
+
+                    # Проверяем классы кнопки
+                    button_classes = reward_button.get_attribute("class")
+                    logger.debug(
+                        f"#{self.serial_number}: Button classes: {button_classes}")
+
+                    # Определяем состояние кнопки
+                    if "is-state-claimed" in button_classes:
+                        logger.info(
+                            f"#{self.serial_number}: Daily check-in already claimed.")
+                        break
+                    elif "is-state-claim" in button_classes:
+                        logger.debug(
+                            f"#{self.serial_number}: Daily check-in button is available. Attempting to click.")
+                        self.safe_click(reward_button)
+                        logger.info(
+                            f"#{self.serial_number}: Daily check-in clicked successfully.")
+                        break
+                    else:
+                        logger.warning(
+                            f"#{self.serial_number}: Reward button state is unknown.")
+                        break
+
+                except StaleElementReferenceException:
+                    retry_count += 1
+                    logger.warning(
+                        f"#{self.serial_number}: Stale element reference detected. Retrying {retry_count}/{max_retries}."
+                    )
+                    reward_container = WebDriverWait(self.driver, 30).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, "div.pages-index-daily-reward.reward"))
+                    )
+                except TimeoutException:
+                    logger.warning(
+                        f"#{self.serial_number}: Daily reward button not found within timeout.")
+                    break
 
             # Проверяем, что появилось время до следующего нажатия
-            logger.debug(
-                f"#{self.serial_number}: Checking for time until the next claim.")
-            next_claim_element = WebDriverWait(self.driver, 30).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "div.subtitle"))
-            )
-
-            # Извлекаем интервал времени из текста
+            next_claim_element = reward_container.find_element(
+                By.CSS_SELECTOR, "div.subtitle")
             next_claim_text = next_claim_element.text.strip()
             logger.debug(
                 f"#{self.serial_number}: Raw text for next claim: {next_claim_text}")
 
-            # Попробуем найти интервал времени
+            # Парсим интервал времени
             time_pattern = r"(\d+\s*[hH]\s*\d+\s*[mM])"
             match = re.search(time_pattern, next_claim_text)
 
-            if match:
-                interval_text = match.group(1)  # Извлекаем интервал времени
-                formatted_text = f"Next check-in available in: {interval_text}"
-            else:
-                # Логируем весь текст, если интервал времени не найден
-                formatted_text = f"Next check-in available: {next_claim_text}"
-
-            # Логируем результат
+            formatted_text = (
+                f"Next check-in available in: {match.group(1)}" if match else f"Next check-in available: {next_claim_text}"
+            )
             logger.info(f"#{self.serial_number}: {formatted_text}")
 
-            # Проверяем количество чекинов
-            logger.debug(f"#{self.serial_number}: Checking total check-ins.")
-            total_checkins_element = self.driver.find_element(
+            # Проверяем количество чекинов внутри reward_container
+            total_checkins_element = reward_container.find_element(
                 By.CSS_SELECTOR, "div.title")
             total_checkins_full_text = total_checkins_element.text.strip()
 
-            logger.debug(
-                f"#{self.serial_number}: Full text from element: {total_checkins_full_text}")
-
-            # Обрезка до первого слова
-            parts = total_checkins_full_text.split()
-            if len(parts) >= 1:
-                total_checkins = parts[0]
-            else:
-                total_checkins = total_checkins_full_text
+            # Извлекаем количество дней
+            checkin_days_pattern = r"(\d+)-days"
+            match_days = re.search(checkin_days_pattern,
+                                   total_checkins_full_text)
+            total_checkins = match_days.group(
+                1) if match_days else total_checkins_full_text
 
             logger.info(
                 f"#{self.serial_number}: Total check-ins: {total_checkins}")
+
         except TimeoutException:
             logger.warning(
-                f"#{self.serial_number}: Daily reward button not found or not clickable within timeout.")
+                f"#{self.serial_number}: Daily reward button or container not found within timeout.")
         except Exception as e:
             logger.error(
-                f"#{self.serial_number}: Error while handling daily reward button: {str(e)}")
+                f"#{self.serial_number}: Unexpected error in claim_daily_reward: {str(e).splitlines()[0]}")
 
     def safe_click(self, element):
         """
@@ -210,7 +248,8 @@ class TelegramBotAutomation:
                         logger.debug(
                             f"#{self.serial_number}: Stopping sleep due to stop_event.")
                         return False
-                    time.sleep(1)  # Короткий sleep для проверки stop_event
+                    # Короткий sleep для проверки stop_event
+                    stop_event.wait(1)
 
                 return True
 
@@ -226,7 +265,7 @@ class TelegramBotAutomation:
                         logger.debug(
                             f"#{self.serial_number}: Stopping retry sleep due to stop_event.")
                         return False
-                    time.sleep(1)
+                    stop_event.wait(1)
 
         logger.error(
             f"#{self.serial_number}: Failed to navigate to Telegram web after {self.MAX_RETRIES} attempts.")
@@ -294,7 +333,7 @@ class TelegramBotAutomation:
                     logger.warning(
                         f"#{self.serial_number}: Chat input area not found.")
                     retries += 1
-                    time.sleep(5)
+                    stop_event.wait(5)
                     continue
 
                 # Находим область поиска
@@ -310,14 +349,14 @@ class TelegramBotAutomation:
                     logger.warning(
                         f"#{self.serial_number}: Search area not found.")
                     retries += 1
-                    time.sleep(5)
+                    stop_event.wait(5)
                     continue
 
                 # Добавляем задержку перед завершением
                 sleep_time = random.randint(5, 7)
                 logger.debug(
                     f"{Fore.LIGHTBLACK_EX}Sleeping for {sleep_time} seconds.{Style.RESET_ALL}")
-                time.sleep(sleep_time)
+                stop_event.wait(sleep_time)
                 logger.debug(
                     f"#{self.serial_number}: Message successfully sent to the group.")
                 return True
@@ -326,7 +365,7 @@ class TelegramBotAutomation:
                 logger.warning(
                     f"#{self.serial_number}: Failed to perform action (attempt {retries + 1}): {error_message}")
                 retries += 1
-                time.sleep(5)
+                stop_event.wait(5)
             except Exception as e:
                 logger.error(f"#{self.serial_number}: Unexpected error: {e}")
                 break
@@ -358,13 +397,13 @@ class TelegramBotAutomation:
                     self.driver.execute_script(
                         "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", link)
                     # Небольшая задержка для завершения скроллинга
-                    time.sleep(1)
+                    stop_event.wait(1)
 
                     # Клик по ссылке
                     link.click()
                     logger.debug(
                         f"#{self.serial_number}: Link clicked successfully.")
-                    time.sleep(2)
+                    stop_event.wait(2)
 
                 # Поиск и клик по кнопке запуска
                 launch_button = self.wait_for_element(
@@ -385,7 +424,7 @@ class TelegramBotAutomation:
                     sleep_time = random.randint(3, 5)
                     logger.debug(
                         f"#{self.serial_number}: Sleeping for {sleep_time} seconds before switching to iframe.")
-                    time.sleep(sleep_time)
+                    stop_event.wait(sleep_time)
 
                     # Переключение на iframe
                     self.switch_to_iframe()
@@ -401,7 +440,7 @@ class TelegramBotAutomation:
                 logger.warning(
                     f"#{self.serial_number}: Failed to click link or interact with elements (attempt {retries + 1}): {str(e).splitlines()[0]}")
                 retries += 1
-                time.sleep(5)
+                stop_event.wait(5)
             except Exception as e:
                 logger.error(
                     f"#{self.serial_number}: Unexpected error during click_link: {str(e).splitlines()[0]}")
@@ -513,7 +552,7 @@ class TelegramBotAutomation:
                             logger.debug(
                                 f"#{self.serial_number}: Stop event detected during retry. Exiting preparing_account.")
                             return False
-                        time.sleep(1)
+                        stop_event.wait(1)
 
         return False  # На случай, если цикл завершится без успешного клика
 
@@ -555,54 +594,66 @@ class TelegramBotAutomation:
 
     def get_username(self):
         """
-        Получает имя пользователя из элемента на странице с поддержкой остановки через stop_event.
+        Извлечение имени пользователя из sessionStorage.
         """
-        if stop_event.is_set():  # Проверка на остановку перед выполнением
+        if stop_event.is_set():
             logger.debug(
                 f"#{self.serial_number}: Stop event detected. Exiting get_username.")
-            return "Unknown"
+            return None
 
         try:
+            # Извлекаем __telegram__initParams из sessionStorage
             logger.debug(
-                f"#{self.serial_number}: Attempting to retrieve username.")
-
-            # Ожидание появления элемента с именем пользователя
-            username_block = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "#app > div.index-page.page > div > div.profile-with-balance > div.username")
-                )
+                f"#{self.serial_number}: Attempting to retrieve '__telegram__initParams' from sessionStorage.")
+            init_params = self.driver.execute_script(
+                "return sessionStorage.getItem('__telegram__initParams');"
             )
+            if not init_params:
+                raise Exception("InitParams not found in sessionStorage.")
 
-            if stop_event.is_set():  # Проверка после ожидания элемента
-                logger.debug(
-                    f"#{self.serial_number}: Stop event detected after locating username element.")
-                return "Unknown"
-
-            logger.debug(f"#{self.serial_number}: Username element located.")
-
-            # Извлечение имени пользователя
-            username = username_block.get_attribute("textContent").strip()
+            # Преобразуем данные JSON в Python-объект
+            init_data = json.loads(init_params)
             logger.debug(
-                f"#{self.serial_number}: Username retrieved: {username}")
+                f"#{self.serial_number}: InitParams successfully retrieved.")
+
+            # Получаем tgWebAppData
+            tg_web_app_data = init_data.get("tgWebAppData")
+            if not tg_web_app_data:
+                raise Exception("tgWebAppData not found in InitParams.")
+
+            # Декодируем tgWebAppData
+            decoded_data = unquote(tg_web_app_data)
+            logger.debug(
+                f"#{self.serial_number}: Decoded tgWebAppData: {decoded_data}")
+
+            # Парсим строку параметров
+            parsed_data = parse_qs(decoded_data)
+            logger.debug(
+                f"#{self.serial_number}: Parsed tgWebAppData: {parsed_data}")
+
+            # Извлекаем параметр 'user' и преобразуем в JSON
+            user_data = parsed_data.get("user", [None])[0]
+            if not user_data:
+                raise Exception("User data not found in tgWebAppData.")
+
+            # Парсим JSON и извлекаем username
+            user_info = json.loads(user_data)
+            username = user_info.get("username")
+            logger.debug(
+                f"#{self.serial_number}: Username successfully extracted: {username}")
+
             return username
 
-        except TimeoutException:
-            logger.debug(
-                f"#{self.serial_number}: Timeout while waiting for username element.")
-            return "Unknown"
-        except (WebDriverException, StaleElementReferenceException) as e:
-            error_message = str(e).splitlines()[0]
-            logger.warning(
-                f"#{self.serial_number}: Exception occurred while retrieving username: {error_message}")
-            return "Unknown"
         except Exception as e:
-            logger.error(
-                f"#{self.serial_number}: Unexpected error while retrieving username: {str(e)}")
-            return "Unknown"
+            # Логируем ошибку без громоздкого Stacktrace
+            error_message = str(e).splitlines()[0]
+            logger.debug(
+                f"#{self.serial_number}: Error extracting Telegram username: {error_message}")
+            return None
 
     def get_balance(self):
         """
-        Получение текущего баланса пользователя с поддержкой stop_event.
+        Получение текущего баланса пользователя с обновленным селектором.
         """
         retries = 0
         while retries < self.MAX_RETRIES:
@@ -612,54 +663,59 @@ class TelegramBotAutomation:
                 return "0"
 
             try:
-                # Ожидаем элементы, содержащие баланс
+                # Ожидание контейнеров с балансами
                 logger.debug(
-                    f"#{self.serial_number}: Waiting for balance elements.")
-                visible_balance_elements = WebDriverWait(self.driver, 10).until(
+                    f"#{self.serial_number}: Waiting for wallet asset container.")
+                wallet_assets = WebDriverWait(self.driver, 10).until(
                     EC.visibility_of_all_elements_located(
-                        (By.CSS_SELECTOR, "div.profile-with-balance .kit-counter-animation.value .el-char-wrapper .el-char")
+                        (By.CSS_SELECTOR, "div.pages-wallet-asset")
                     )
                 )
 
-                # Извлекаем текст и собираем в строку
-                balance_text = ''.join([element.get_attribute(
-                    "textContent").strip() for element in visible_balance_elements])
-                logger.debug(
-                    f"#{self.serial_number}: Raw balance text: {balance_text}")
+                # Извлечение данных из каждого контейнера
+                balances = {}
+                for asset in wallet_assets:
+                    if stop_event.is_set():
+                        logger.debug(
+                            f"#{self.serial_number}: Stop event detected during balance processing. Exiting.")
+                        return "0"
+                    try:
+                        name_element = asset.find_element(
+                            By.CSS_SELECTOR, "div.name")
+                        balance_element = asset.find_element(
+                            By.CSS_SELECTOR, "div.balance")
 
-                # Удаляем запятые из текста
-                balance_text = balance_text.replace(',', '')
-                logger.debug(
-                    f"#{self.serial_number}: Cleaned balance text: {balance_text}")
+                        # Получение текста
+                        name = name_element.text.strip()
+                        balance_text = balance_element.text.strip()
 
-                # Проверяем, является ли текст валидным числом, и преобразуем в float
-                if balance_text.replace('.', '', 1).isdigit():
-                    self.balance = float(balance_text)
+                        # Удаление запятых и единиц измерения
+                        balance_cleaned = balance_text.split()[
+                            0].replace(',', '')
+
+                        # Проверка валидности значения
+                        if balance_cleaned.replace('.', '', 1).isdigit():
+                            balance_value = float(balance_cleaned)
+                            balances[name] = balance_value
+                        else:
+                            logger.warning(
+                                f"#{self.serial_number}: Invalid balance text for {name}: '{balance_text}'")
+                    except Exception as e:
+                        logger.debug(
+                            f"#{self.serial_number}: Error processing wallet asset: {str(e).splitlines()[0]}")
+
+                logger.debug(
+                    f"#{self.serial_number}: Extracted balances: {balances}")
+
+                # Если найдены "Blum points"
+                if "Blum points" in balances:
+                    return str(balances["Blum points"])
                 else:
                     logger.warning(
-                        f"#{self.serial_number}: Invalid balance text: '{balance_text}'")
-                    self.balance = 0.0
-
-                # Преобразуем float в строку, убирая `.0`, если число целое
-                balance_text = str(
-                    int(self.balance)) if self.balance.is_integer() else str(self.balance)
-
-                # Получаем имя пользователя
-                if stop_event.is_set():
-                    logger.debug(
-                        f"#{self.serial_number}: Stop event detected. Exiting get_balance.")
+                        f"#{self.serial_number}: Blum points not found in balances.")
                     return "0"
 
-                username = self.get_username()
-
-                # Логируем успешное получение баланса
-                logger.info(
-                    f"#{self.serial_number}: Balance: {balance_text}, Username: {username}")
-
-                return balance_text
-
             except (NoSuchElementException, TimeoutException) as e:
-                # Логируем предупреждение при неудаче
                 if stop_event.is_set():
                     logger.debug(
                         f"#{self.serial_number}: Stop event detected during exception handling. Exiting get_balance.")
@@ -668,29 +724,29 @@ class TelegramBotAutomation:
                 logger.warning(
                     f"#{self.serial_number}: Failed to get balance (attempt {retries + 1}): {str(e).splitlines()[0]}")
                 retries += 1
-                for _ in range(5):  # Короткие паузы с проверкой stop_event
+                for _ in range(5):
                     if stop_event.is_set():
                         logger.debug(
                             f"#{self.serial_number}: Stop event detected during retry delay. Exiting get_balance.")
                         return "0"
-                    time.sleep(1)
+                    stop_event.wait(1)
 
             except Exception as e:
-                # Логируем ошибку при неожиданном исключении
                 logger.error(
-                    f"#{self.serial_number}: Unexpected error while getting balance: {str(e)}")
+                    f"#{self.serial_number}: Unexpected error while getting balance: {str(e).splitlines()[0]}")
                 return "0"
 
-        # Если после всех попыток не удалось получить баланс, возвращаем "0"
         logger.error(
             f"#{self.serial_number}: Failed to retrieve balance after {self.MAX_RETRIES} retries.")
         return "0"
 
     def get_time(self):
         """
-        Получает оставшееся время до следующего действия в формате HH:MM:SS.
+        Получает оставшееся время до следующего действия на основе процента выполнения.
         """
         retries = 0
+        total_time_minutes = 8 * 60  # 8 часов в минутах
+
         while retries < self.MAX_RETRIES:
             if stop_event.is_set():
                 logger.debug(
@@ -698,187 +754,285 @@ class TelegramBotAutomation:
                 return None
 
             try:
-                # Находим элемент, содержащий текст времени
-                time_element = self.driver.find_element(
-                    By.CSS_SELECTOR, "div.time-left")
-                time_text = time_element.get_attribute("textContent").strip()
-
+                # Ожидание родительского контейнера с классом 'pages-index-points'
                 logger.debug(
-                    f"#{self.serial_number}: Raw time text: {time_text}")
+                    f"#{self.serial_number}: Searching for farming container.")
+                farming_container = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, "div.pages-index-points"))
+                )
+                logger.debug(
+                    f"#{self.serial_number}: Farming container found.")
 
-                # Парсим время из текста
-                hours, minutes = 0, 0
-                if "h" in time_text or "ч" in time_text:
-                    hours_part = time_text.split()[0]
-                    # Убираем последний символ (h/ч) и преобразуем в число
-                    hours = int(hours_part[:-1])
-                if "m" in time_text or "м" in time_text:
-                    minutes_part = time_text.split()[-1]
-                    # Убираем последний символ (m/м) и преобразуем в число
-                    minutes = int(minutes_part[:-1])
+                # Поиск кнопки внутри контейнера
+                farming_button = farming_container.find_element(
+                    By.CSS_SELECTOR, "button.kit-pill.farming"
+                )
+                logger.debug(f"#{self.serial_number}: Farming button found.")
 
-                # Генерируем случайные секунды
-                seconds = random.randint(0, 59)
-                formatted_time = f"{hours:02}:{minutes:02}:{seconds:02}"
+                # Получение стиля кнопки и извлечение процента прогресса
+                style_attribute = farming_button.get_attribute("style")
+                logger.debug(
+                    f"#{self.serial_number}: Farming button style: {style_attribute}")
 
-                # Логируем успешное извлечение времени
-                if not self.logged_farm_time:
-                    logger.info(
-                        f"#{self.serial_number}: Start farm will be available after: {formatted_time}")
-                    self.logged_farm_time = True
-                return formatted_time
+                # Извлечение процента выполнения
+                percentage_pattern = r"background-position-x:\s*(-?\d+\.?\d*)%"
+                match = re.search(percentage_pattern, style_attribute)
 
-            except NoSuchElementException:
-                if stop_event.is_set():
+                if match:
+                    progress_percentage = float(match.group(1))
                     logger.debug(
-                        f"#{self.serial_number}: Stop event detected during NoSuchElementException. Exiting get_time.")
+                        f"#{self.serial_number}: Farming progress percentage: {progress_percentage}%")
+
+                    # Вычисление оставшегося времени
+                    progress_fraction = max(
+                        0, min(1, abs(progress_percentage / 100)))
+                    remaining_time_minutes = total_time_minutes * \
+                        (1 - progress_fraction)
+
+                    # Форматирование времени в HH:MM:SS
+                    hours = int(remaining_time_minutes // 60)
+                    minutes = int(remaining_time_minutes % 60)
+                    seconds = random.randint(0, 59)
+                    formatted_time = f"{hours:02}:{minutes:02}:{seconds:02}"
+
+                    logger.debug(
+                        f"#{self.serial_number}: Calculated remaining time: {formatted_time}")
+
+                    if not self.logged_farm_time:
+                        logger.info(
+                            f"#{self.serial_number}: Farming available after: {formatted_time}")
+                        self.logged_farm_time = True
+
+                    return formatted_time
+                else:
+                    logger.warning(
+                        f"#{self.serial_number}: Farming progress percentage not found.")
                     return None
-                logger.debug(
-                    f"#{self.serial_number}: Time element not found (attempt {retries + 1}).")
+
+            except (NoSuchElementException, TimeoutException) as e:
                 retries += 1
-                for _ in range(5):  # Короткие паузы с проверкой stop_event
-                    if stop_event.is_set():
-                        logger.debug(
-                            f"#{self.serial_number}: Stop event detected during retry delay. Exiting get_time.")
-                        return None
-                    time.sleep(1)
+                logger.debug(
+                    f"#{self.serial_number}: Element not found or timeout (attempt {retries}/{self.MAX_RETRIES})."
+                )
+                stop_event.wait(1)
 
             except Exception as e:
-                if stop_event.is_set():
-                    logger.debug(
-                        f"#{self.serial_number}: Stop event detected during exception handling. Exiting get_time.")
-                    return None
+                error_message = str(e).splitlines()[0]
                 logger.error(
-                    f"#{self.serial_number}: Unexpected error while retrieving time: {str(e)}")
+                    f"#{self.serial_number}: Unexpected error in get_time: {error_message}")
                 return None
 
-        # Если все попытки извлечения времени не удались
         logger.debug(
             f"#{self.serial_number}: Failed to retrieve time after {self.MAX_RETRIES} retries.")
         return None
 
     def farming(self):
         """
-        Выполнение действий для farming, включая проверку доступности времени,
-        нажатие кнопок и запуск игры.
+        Выполнение действий для farming: нажатие кнопки, если её состояние позволяет.
         """
-        # Проверяем Daily check-in
-        self.claim_daily_reward()
-
-        actions = [
-            (".index-farming-button .kit-button",
-             "Farming button clicked", "No active button found.")
-        ]
-
-        for css_selector, success_msg, fail_msg in actions:
-            retries = 0
-            final_click = False  # Флаг, указывающий, был ли выполнен последний клик
-
-            while retries < self.MAX_RETRIES:
-                if stop_event.is_set():
-                    logger.debug(
-                        f"#{self.serial_number}: Stop event detected. Exiting farming loop.")
-                    return
-
-                try:
-                    # Проверяем доступность времени перед нажатием кнопки
-                    formatted_time = self.get_time()
-                    if formatted_time:
-                        logger.debug(
-                            f"#{self.serial_number}: Farming will be available after: {formatted_time}. Skipping button click.")
-                        break
-
-                    # Находим и кликаем кнопку
-                    button = self.driver.find_element(
-                        By.CSS_SELECTOR, css_selector)
-                    button.click()
-                    logger.info(f"#{self.serial_number}: {success_msg}")
-                    final_click = True  # Указываем, что был выполнен финальный клик
-
-                    # Ждем перед проверкой активности кнопки
-                    sleep_time = random.randint(3, 4)
-                    for _ in range(sleep_time):
-                        if stop_event.is_set():
-                            logger.debug(
-                                f"#{self.serial_number}: Stop event detected during sleep. Exiting farming.")
-                            return
-                        time.sleep(1)
-
-                    # Проверяем время после нажатия
-                    formatted_time = self.get_time()
-                    if formatted_time:
-                        logger.info(
-                            f"#{self.serial_number}: Farming paused. Will be available after: {formatted_time}.")
-                        break
-
-                    # Проверяем активность кнопки для повторного нажатия
-                    try:
-                        button = self.driver.find_element(
-                            By.CSS_SELECTOR, css_selector)
-                        if button.is_enabled():
-                            button.click()
-                            final_click = True  # Обновляем флаг
-                    except NoSuchElementException:
-                        break
-
-                except NoSuchElementException:
-                    logger.info(f"#{self.serial_number}: {fail_msg}")
-                    break
-                except WebDriverException as e:
-                    logger.warning(
-                        f"#{self.serial_number}: Failed farming action (attempt {retries + 1}): {str(e).splitlines()[0]}")
-                    retries += 1
-                    for _ in range(5):
-                        if stop_event.is_set():
-                            logger.debug(
-                                f"#{self.serial_number}: Stop event detected during retry delay. Exiting farming.")
-                            return
-                        time.sleep(1)
-
-            # Проверка на ошибку, если время так и не появилось после последнего клика
-            if final_click and not formatted_time:
-                logger.error(
-                    f"#{self.serial_number}: Time did not appear after the final click.")
-
-        # Проверяем доступные игры и запускаем auto_start_game
         try:
             if stop_event.is_set():
                 logger.debug(
-                    f"#{self.serial_number}: Stop event detected before checking available games. Exiting farming.")
+                    f"#{self.serial_number}: Stop event detected. Exiting farming.")
                 return
 
-            available_games = self.get_number_from_element(
-                By.CSS_SELECTOR, ".pass")
-            if available_games is None or available_games == 0:
-                logger.info(
-                    f"#{self.serial_number}: All games completed or unavailable.")
+            logger.debug(f"#{self.serial_number}: Starting farming process.")
+
+            # Ожидание готовности страницы
+            self.wait_for_page_load()
+            time.sleep(3)  # Пауза для стабилизации страницы
+
+            # Ищем родительский контейнер 'pages-index-points'
+            farming_container = WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, "div.pages-index-points"))
+            )
+            logger.debug(f"#{self.serial_number}: Farming container found.")
+
+            # Ищем блок 'pages-wallet-asset-farming-slot' внутри farming_container
+            farming_slots = farming_container.find_elements(
+                By.CSS_SELECTOR, "div.pages-wallet-asset-farming-slot"
+            )
+            if not farming_slots:
+                logger.warning(
+                    f"#{self.serial_number}: No farming slots found.")
                 return
 
-            # Проверяем ограничения на игры
+            logger.debug(
+                f"#{self.serial_number}: Found {len(farming_slots)} farming slot(s). Checking buttons.")
+
+            for slot in farming_slots:
+                if stop_event.is_set():
+                    logger.debug(
+                        f"#{self.serial_number}: Stop event detected during slot processing. Exiting.")
+                    return
+
+                try:
+                    # Ищем кнопку внутри текущего слота
+                    farming_button = slot.find_element(
+                        By.CSS_SELECTOR, "button.kit-pill-claim.reset")
+                    logger.debug(
+                        f"#{self.serial_number}: Farming button found in slot.")
+
+                    # Получаем классы кнопки
+                    button_classes = farming_button.get_attribute("class")
+                    logger.debug(
+                        f"#{self.serial_number}: Initial farming button classes: {button_classes}")
+
+                    if "is-state-claim is-type-default" in button_classes or "is-state-claim is-type-dark" in button_classes:
+                        # Первый клик
+                        logger.debug(
+                            f"#{self.serial_number}: Attempting first click on farming button.")
+                        self.safe_click(farming_button)
+                        logger.info(
+                            f"#{self.serial_number}: First click on farming button performed.")
+
+                        # Ожидание изменения состояния кнопки
+                        for _ in range(5):  # Повторяем до 5 раз
+                            if stop_event.is_set():
+                                logger.debug(
+                                    f"#{self.serial_number}: Stop event detected during button state check. Exiting.")
+                                return
+
+                            time.sleep(2)
+                            try:
+                                farming_button = slot.find_element(
+                                    By.CSS_SELECTOR, "button.kit-pill-claim.reset")
+                                button_classes = farming_button.get_attribute(
+                                    "class")
+                                logger.debug(
+                                    f"#{self.serial_number}: Farming button classes after first click: {button_classes}")
+
+                                if "is-state-claim is-type-dark" in button_classes:
+                                    # Второй клик
+                                    logger.debug(
+                                        f"#{self.serial_number}: Attempting second click on farming button.")
+                                    self.safe_click(farming_button)
+                                    logger.info(
+                                        f"#{self.serial_number}: Second click on farming button performed.")
+                                    break
+                                elif "farming" in button_classes:
+                                    logger.info(
+                                        f"#{self.serial_number}: Farming button successfully changed to 'farming' state.")
+                                    return
+                            except StaleElementReferenceException:
+                                logger.debug(
+                                    f"#{self.serial_number}: Farming button reference stale. Retrying...")
+                                continue
+
+                        # Проверяем статус после второго клика
+                        if stop_event.is_set():
+                            logger.debug(
+                                f"#{self.serial_number}: Stop event detected before final state check. Exiting.")
+                            return
+
+                        time.sleep(2)
+                        button_classes = farming_button.get_attribute("class")
+                        if "farming" in button_classes:
+                            logger.info(
+                                f"#{self.serial_number}: Farming button successfully changed to 'farming' state.")
+                        else:
+                            logger.warning(
+                                f"#{self.serial_number}: Farming button did not reach 'farming' state.")
+                    elif "farming" in button_classes:
+                        logger.info(
+                            f"#{self.serial_number}: Farming button is already in 'farming' state.")
+                    else:
+                        logger.warning(
+                            f"#{self.serial_number}: Farming button is in an unexpected state.")
+
+                    # Прерываем цикл после успешной обработки слота
+                    break
+
+                except NoSuchElementException:
+                    logger.debug(
+                        f"#{self.serial_number}: No clickable farming button in this slot. Skipping.")
+                    continue
+                except StaleElementReferenceException:
+                    logger.debug(
+                        f"#{self.serial_number}: Farming button reference stale. Retrying slot.")
+                    continue
+                except Exception as e:
+                    logger.warning(
+                        f"#{self.serial_number}: Error while interacting with button: {str(e).splitlines()[0]}")
+                    continue
+            # Проверяем доступные игры и запускаем auto_start_game
             try:
-                self.max_games = self.settings.get("MAX_GAMES", float('inf'))
-                if isinstance(self.max_games, str):
-                    self.max_games = int(
-                        self.max_games) if self.max_games.strip().isdigit() else float('inf')
-            except ValueError:
-                self.max_games = float('inf')
+                # Проверяем наличие стоп-события
+                if stop_event.is_set():
+                    logger.debug(
+                        f"#{self.serial_number}: Stop event detected before checking available games. Exiting farming.")
+                    return
 
-            if self.max_games == 0:
-                logger.info(
-                    f"#{self.serial_number}: MAX_GAMES set to 0. Skipping game start.")
-                return
-            elif self.max_games != float('inf'):
-                logger.info(
-                    f"#{self.serial_number}: {available_games} games available. Limiting to {self.max_games}.")
-            else:
-                logger.info(
-                    f"#{self.serial_number}: {available_games} games available. No limitation applied.")
+                # Ищем родительский контейнер с информацией об играх
+                game_container = WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, "div.pages-index-game"))
+                )
+                logger.debug(f"#{self.serial_number}: Game container found.")
 
-            # Запуск игры
-            self.auto_start_game()
+                # Извлекаем количество оставшихся игр
+                balance_element = game_container.find_element(
+                    By.CSS_SELECTOR, "div.balance"
+                )
+                balance_text = balance_element.text.strip()
+                available_games = self.extract_number_from_text(balance_text)
+
+                if available_games == 0:
+                    logger.info(
+                        f"#{self.serial_number}: All games completed or unavailable.")
+                    return
+
+                # Проверяем ограничения на игры
+                try:
+                    self.max_games = self.settings.get(
+                        "MAX_GAMES", float('inf'))
+                    if isinstance(self.max_games, str):
+                        self.max_games = int(
+                            self.max_games) if self.max_games.strip().isdigit() else float('inf')
+                except ValueError:
+                    self.max_games = float('inf')
+
+                if self.max_games == 0:
+                    logger.info(
+                        f"#{self.serial_number}: MAX_GAMES set to 0. Skipping game start.")
+                    return
+                elif self.max_games != float('inf'):
+                    logger.info(
+                        f"#{self.serial_number}: {available_games} games available. Limiting to {self.max_games}.")
+                else:
+                    logger.info(
+                        f"#{self.serial_number}: {available_games} games available. No limitation applied.")
+
+                # Находим кнопку "Играть"
+                play_button = game_container.find_element(
+                    By.CSS_SELECTOR, "button.kit-pill.reset.is-type-white"
+                )
+
+                # Проверяем наличие и кликаем на кнопку "Играть"
+                if play_button:
+                    logger.debug(
+                        f"#{self.serial_number}: Clicking the play button to start the game.")
+
+                    self.auto_start_game()
+
+                else:
+                    logger.warning(
+                        f"#{self.serial_number}: Play button not found or not clickable.")
+
+            except TimeoutException:
+                logger.warning(
+                    f"#{self.serial_number}: Game container not found within timeout.")
+            except Exception as e:
+                logger.error(
+                    f"#{self.serial_number}: Error during farming or checking games availability: {str(e).splitlines()[0]}")
+        except TimeoutException:
+            logger.warning(
+                f"#{self.serial_number}: Farming container not found within timeout.")
         except Exception as e:
             logger.error(
-                f"#{self.serial_number}: Error during farming or checking games availability: {str(e)}")
+                f"#{self.serial_number}: Critical error during farming process: {str(e).splitlines()[0]}")
 
     def get_number_from_element(self, by, value):
         """
@@ -892,60 +1046,47 @@ class TelegramBotAutomation:
                 return 0
 
             try:
-                # Логирование попытки найти элемент
                 logger.debug(
-                    f"#{self.serial_number}: Attempting to locate element using locator: {by}, value: {value}")
+                    f"#{self.serial_number}: Attempting to locate element using locator: {by}, value: {value}.")
                 element = self.wait_for_element(by, value)
 
                 if element:
-                    # Логирование успешного нахождения элемента
                     logger.debug(
-                        f"#{self.serial_number}: Element located successfully.")
-
-                    # Скроллим к элементу, чтобы сделать его видимым
-                    logger.debug(
-                        f"#{self.serial_number}: Scrolling to element to make it visible.")
+                        f"#{self.serial_number}: Element located successfully. Scrolling into view.")
                     self.driver.execute_script(
                         "arguments[0].scrollIntoView({block: 'center'});", element)
 
-                    # Попытка получить текст из элемента
+                    # Извлекаем текст из элемента
+                    text = element.get_attribute("textContent") or element.text
+                    text = text.strip()
                     logger.debug(
-                        f"#{self.serial_number}: Attempting to extract text from the element.")
-                    text = element.get_attribute("textContent").strip() if element.get_attribute(
-                        "textContent") else element.text.strip()
-                    logger.debug(
-                        f"#{self.serial_number}: Extracted text: '{text}'")
+                        f"#{self.serial_number}: Extracted text: '{text}'.")
 
                     # Используем регулярное выражение для поиска числа
-                    logger.debug(
-                        f"#{self.serial_number}: Attempting to extract number from the text using regex.")
-                    match = re.search(r'\d+', text)  # Исправлено
-
+                    match = re.search(r'\d+', text)
                     if match:
                         extracted_number = int(match.group())
                         logger.debug(
-                            f"#{self.serial_number}: Number extracted successfully: {extracted_number}")
+                            f"#{self.serial_number}: Number extracted successfully: {extracted_number}.")
                         return extracted_number
                     else:
                         logger.debug(
                             f"#{self.serial_number}: No number found in the text: '{text}'. Returning 0.")
-                        return 0  # Если число не найдено
+                        return 0
                 else:
-                    # Логирование, если элемент не найден
                     logger.debug(
                         f"#{self.serial_number}: Element not found. Returning 0.")
                     return 0
             except Exception as e:
-                # Логирование ошибок
                 logger.warning(
-                    f"#{self.serial_number}: Error while retrieving number from element (attempt {retries + 1}): {str(e)}")
+                    f"#{self.serial_number}: Error while retrieving number (attempt {retries + 1}): {str(e).splitlines()[0]}")
                 retries += 1
                 for _ in range(5):
                     if stop_event.is_set():
                         logger.debug(
                             f"#{self.serial_number}: Stop event detected during retry delay. Exiting get_number_from_element.")
                         return 0
-                    time.sleep(1)
+                    stop_event.wait(1)
 
         logger.error(
             f"#{self.serial_number}: Failed to retrieve number after {self.MAX_RETRIES} retries.")
@@ -956,12 +1097,16 @@ class TelegramBotAutomation:
         Получение поинтов и оставшихся игр.
         """
         try:
+            if stop_event.is_set():
+                logger.debug(
+                    f"#{self.serial_number}: Stop event detected. Exiting get_points_and_remaining_games.")
+                return None, None
+
             # Ожидаем появления элемента с поинтами
             points_element = self.wait_for_element(
                 By.CSS_SELECTOR,
                 "#app > div.game-page.page > div > div.content > div.reward > div.value > div.animated-points.visible > div.amount"
             )
-
             points = None
             if points_element:
                 points = points_element.text.strip()
@@ -972,15 +1117,20 @@ class TelegramBotAutomation:
                     logger.warning(
                         f"#{self.serial_number}: Points element found but value is empty.")
             else:
-                logger.warning(
+                logger.debug(
                     f"#{self.serial_number}: Points element not found.")
+
+            # Проверяем stop_event перед извлечением оставшихся игр
+            if stop_event.is_set():
+                logger.debug(
+                    f"#{self.serial_number}: Stop event detected before retrieving remaining games. Exiting.")
+                return points, None
 
             # Ожидаем появления элемента с количеством оставшихся игр
             games_element = self.wait_for_element(
                 By.CSS_SELECTOR,
                 "#app > div.game-page.page > div > div.buttons > button.kit-button.is-large.is-primary > div.label > span"
             )
-
             remaining_games_real = None
             if games_element:
                 remaining_games_text = games_element.text.strip()
@@ -996,7 +1146,7 @@ class TelegramBotAutomation:
 
         except Exception as e:
             logger.error(
-                f"#{self.serial_number}: Error while retrieving points and remaining games: {str(e)}")
+                f"#{self.serial_number}: Error while retrieving points and remaining games: {str(e).splitlines()[0]}")
             return None, None
 
     def extract_number_from_text(self, text):
@@ -1044,10 +1194,13 @@ class TelegramBotAutomation:
                     f"#{self.serial_number}: Attempt {attempt + 1} of {max_attempts}: Searching for 'Play' buttons.")
 
                 # Проверяем наличие кнопок 'Play' или 'Играть'
-                play_buttons = self.driver.find_elements(By.CSS_SELECTOR,
-                                                         "button.kit-button.is-large.is-primary, "
-                                                         "a.play-btn[href='/game'], "
-                                                         "button.kit-button.is-large.is-primary")
+                play_buttons = self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "button.kit-button.is-large.is-primary, "
+                    "a.play-btn[href='/game'], "
+                    "button.kit-button.is-large.is-primary, "
+                    "button.kit-pill.reset.is-type-white"  # Новый селектор для кнопки
+                )
 
                 if play_buttons:
                     logger.debug(
@@ -1070,7 +1223,7 @@ class TelegramBotAutomation:
                             sleep_time = random.uniform(2, 5)
                             logger.debug(
                                 f"#{self.serial_number}: Sleeping for {sleep_time:.2f} seconds.")
-                            time.sleep(sleep_time)
+                            stop_event.wait(sleep_time)
 
                             # Ожидание завершения игры
                             self.wait_for_game_end()
@@ -1086,7 +1239,7 @@ class TelegramBotAutomation:
                         f"#{self.serial_number}: No 'Play' buttons found. Retrying...")
 
                 attempt += 1
-                time.sleep(2)  # Задержка перед повторной попыткой
+                stop_event.wait(2)  # Задержка перед повторной попыткой
 
             except Exception as e:
                 logger.error(
@@ -1267,7 +1420,7 @@ class TelegramBotAutomation:
                         }
 
                         function autoStartGame() {
-                            const buttons = document.querySelectorAll('button.kit-button.is-large.is-primary, a.play-btn[href="/game"], button.kit-button.is-large.is-primary');
+                            const buttons = document.querySelectorAll('button.kit-button.is-large.is-primary, a.play-btn[href="/game"], button.kit-button.is-large.is-primary, button.kit-pill.reset.is-type-white');
                             buttons.forEach(btn => {
                                 if (/Play|Continue|Играть|Продолжить|Вернуться на главную/.test(btn.textContent)) {
                                     setTimeout(() => {
@@ -1357,7 +1510,7 @@ class TelegramBotAutomation:
             logger.info(
                 f"#{self.serial_number}: Remaining games are 0. Ending the process.")
             self.driver.back()  # Используем команду браузера "назад"
-            time.sleep(2)  # Задержка для загрузки предыдущей страницы
+            stop_event.wait(2)  # Задержка для загрузки предыдущей страницы
             self.switch_to_iframe()
         elif self.remaining_games > 0:
             logger.info(
@@ -1438,7 +1591,7 @@ class TelegramBotAutomation:
                         try:
                             self.execute_game_script()  # Используем execute_game_script для корректного запуска
                             # Пауза для имитации естественного поведения
-                            time.sleep(random.uniform(2, 5))
+                            stop_event.wait(random.uniform(2, 5))
                             self.wait_for_game_end()  # Ожидание завершения игры
                             return
                         except Exception as game_start_error:

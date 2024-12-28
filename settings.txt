@@ -11,7 +11,7 @@ MAX_GAMES=
 ACCOUNTS=
 
 # Включение/выключение выполнение квестов (квесты выполняются через API, используя запущенный активный профиль)
-ENABLE_QUESTS=false
+ENABLE_QUESTS=true
 
 # URL репозитория для проверки обновлений
 REPOSITORY_URL=https://github.com/Omnividente/blum_adspower

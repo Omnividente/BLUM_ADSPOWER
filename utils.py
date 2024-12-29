@@ -155,10 +155,9 @@ log_lock = threading.Lock()
 class SafeRotatingFileHandler(RotatingFileHandler):
     def doRollover(self):
         """
-        Безопасная ротация файла логов с проверкой флага stop_event.
+        Безопасная ротация файла логов с проверкой блокировки и попытками повторной ротации.
         """
         with log_lock:
-            # Если установлен флаг stop_event, отменяем ротацию
             if stop_event.is_set():
                 logging.warning("Stop event detected. Rollover aborted.")
                 return
@@ -168,6 +167,7 @@ class SafeRotatingFileHandler(RotatingFileHandler):
 
             for attempt in range(retries):
                 try:
+                    # Закрываем текущий поток, если он существует
                     if self.stream:
                         self.stream.close()
                         self.stream = None
@@ -177,25 +177,27 @@ class SafeRotatingFileHandler(RotatingFileHandler):
                         with open(self.baseFilename, "a"):
                             pass
 
+                    # Выполняем стандартную ротацию
                     super().doRollover()
                     self.stream = self._open()
                     logging.info("Log rollover completed successfully.")
                     break
-                except Exception as e:
+                except PermissionError as e:
                     if attempt < retries - 1:
                         logging.warning(
-                            f"Retrying log rollover (attempt {attempt + 1}/{retries}) due to error: {e}"
+                            f"File is locked. Retrying log rollover (attempt {attempt + 1}/{retries})."
                         )
                         time.sleep(delay)
                         continue
                     logging.error(
                         f"Error during log rollover after {retries} attempts: {e}")
+
 # Настройка логгера
 
 
 def setup_logger(debug_mode=False, log_to_file=True, log_file_size=512 * 1024, backup_count=1, log_dir="."):
     """
-    Настройка логирования с поддержкой ротации и флага stop_event.
+    Настройка логирования с поддержкой ротации и корректной обработки флага stop_event.
     """
     logger = logging.getLogger("application_logger")
     logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)

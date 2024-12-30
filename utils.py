@@ -195,7 +195,7 @@ class SafeRotatingFileHandler(RotatingFileHandler):
 # Настройка логгера
 
 
-def setup_logger(debug_mode=False, log_to_file=True, log_file_size=512 * 1024, backup_count=1, log_dir="."):
+def setup_logger(debug_mode=False, log_to_file=False, log_file_size=512 * 1024, backup_count=1, log_dir="."):
     """
     Настройка логирования с поддержкой ротации и корректной обработки флага stop_event.
     """

@@ -767,8 +767,8 @@ class TelegramBotAutomation:
                     f"#{self.serial_number}: Extracted balances: {balances}")
 
                 # Если найдены "Blum points"
-                if "Blum points" in balances:
-                    return str(balances["Blum points"])
+                if "Blum" in balances:
+                    return str(balances["Blum"])
                 else:
                     logger.warning(
                         f"#{self.serial_number}: Blum points not found in balances.")
